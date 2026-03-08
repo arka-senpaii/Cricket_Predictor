@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>T20 AI Predictor — Men's Cricket</title>
+    <meta name="description" content="Deep Learning T20 men's cricket match winner, run and wicket predictor." />
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+
+    <div class="container">
+
+        <!-- HEADER -->
+        <header>
+            <div class="trophy">🏏</div>
+            <h1>T20 AI Predictor</h1>
+            <p>Deep Learning · Men's International Cricket</p>
+        </header>
+
+        <!-- FORM -->
+        <section class="glass-panel form-section">
+            <form id="predictor-form">
+
+                <!-- Team row -->
+                <div class="team-row">
+                    <div class="team-picker" id="t1-picker">
+                        <label>Team 1 <small>(Batting First)</small></label>
+                        <div class="flag-select-wrap">
+                            <img id="flag-t1" src="https://flagcdn.com/h40/un.png" alt="" class="flag-thumb"
+                                onerror="this.style.display='none'" />
+                            <select id="team1" name="team1" required>
+                                {% for team in teams %}
+                                <option value="{{ team }}" data-flag="{{ flags[team] }}">{{ team }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="vs-divider">VS</div>
+
+                    <div class="team-picker" id="t2-picker">
+                        <label>Team 2 <small>(Chasing)</small></label>
+                        <div class="flag-select-wrap">
+                            <img id="flag-t2" src="https://flagcdn.com/h40/un.png" alt="" class="flag-thumb"
+                                onerror="this.style.display='none'" />
+                            <select id="team2" name="team2" required>
+                                {% for team in teams %}
+                                <option value="{{ team }}" data-flag="{{ flags[team] }}">{{ team }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Venue -->
+                <div class="form-group">
+                    <label for="venue">Venue</label>
+                    <select id="venue" name="venue" required>
+                        {% for venue in venues %}
+                        <option value="{{ venue }}">{{ venue }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Toss row -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="toss_winner">Toss Winner</label>
+                        <select id="toss_winner" name="toss_winner" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="toss_decision">Toss Decision</label>
+                        <select id="toss_decision" name="toss_decision" required>
+                            <option value="bat">Bat First</option>
+                            <option value="field">Field First</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" id="predict-btn">
+                    <span class="btn-text">⚡ Generate Prediction</span>
+                    <div class="loader hidden"></div>
+                </button>
+            </form>
+        </section>
+
+        <!-- PREDICTION RESULT (hidden initially) -->
+        <section id="results-section" class="hidden">
+
+            <!-- Winner banner -->
+            <div class="glass-panel winner-banner">
+                <p class="label-sm">🏆 Predicted Winner</p>
+                <div class="winner-row">
+                    <img id="winner-flag" src="" alt="" class="winner-flag" onerror="this.style.display='none'" />
+                    <h2 id="predicted-winner" class="gradient-text">—</h2>
+                </div>
+                <div class="prob-bar-wrap">
+                    <div class="prob-bar-labels">
+                        <span id="t1-prob-label">T1</span>
+                        <span id="t2-prob-label">T2</span>
+                    </div>
+                    <div class="prob-bar">
+                        <div class="prob-fill t1-fill" id="t1-fill" style="width:50%"></div>
+                        <div class="prob-fill t2-fill" id="t2-fill" style="width:50%"></div>
+                    </div>
+                    <div class="prob-values">
+                        <span id="prob-t1-value">50%</span>
+                        <span id="prob-t2-value">50%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scorecard projections -->
+            <div class="scorecards">
+                <div class="scorecard glass-panel">
+                    <img id="sc-flag1" src="" alt="" class="sc-flag" onerror="this.style.display='none'" />
+                    <h4 id="sc-t1">Team 1</h4>
+                    <div class="score-display">
+                        <span class="runs" id="t1-runs">0</span>
+                        <span class="slash">/</span>
+                        <span class="wkts" id="t1-wkts">0</span>
+                    </div>
+                    <p class="innings-tag">1st Innings · Projected</p>
+                </div>
+                <div class="scorecard glass-panel">
+                    <img id="sc-flag2" src="" alt="" class="sc-flag" onerror="this.style.display='none'" />
+                    <h4 id="sc-t2">Team 2</h4>
+                    <div class="score-display">
+                        <span class="runs" id="t2-runs">0</span>
+                        <span class="slash">/</span>
+                        <span class="wkts" id="t2-wkts">0</span>
+                    </div>
+                    <p class="innings-tag">2nd Innings · Projected</p>
+                </div>
+            </div>
+
+            <!-- CHARTS -->
+            <div class="charts-grid">
+                <div class="glass-panel chart-card">
+                    <h4 class="chart-title">🎯 Win Probability</h4>
+                    <div class="chart-container chart-container-doughnut">
+                        <canvas id="chart-win-prob"></canvas>
+                    </div>
+                </div>
+                <div class="glass-panel chart-card">
+                    <h4 class="chart-title">📊 Projected Scores</h4>
+                    <div class="chart-container">
+                        <canvas id="chart-scores"></canvas>
+                    </div>
+                </div>
+                <div class="glass-panel chart-card chart-card-wide">
+                    <h4 class="chart-title">📈 Team Comparison</h4>
+                    <div class="chart-container chart-container-radar">
+                        <canvas id="chart-radar"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- HEAD TO HEAD (hidden initially) -->
+        <section id="h2h-section" class="hidden">
+            <div class="h2h-header glass-panel">
+                <h3>📊 Head-to-Head · Last Matches</h3>
+                <div class="h2h-teams">
+                    <div class="h2h-team">
+                        <img id="h2h-flag1" src="" alt="" class="h2h-flag" onerror="this.style.display='none'" />
+                        <span id="h2h-t1-name"></span>
+                    </div>
+                    <div class="h2h-record-box">
+                        <span id="h2h-t1-wins" class="win-num">0</span>
+                        <span class="h2h-vs">—</span>
+                        <span id="h2h-t2-wins" class="win-num">0</span>
+                    </div>
+                    <div class="h2h-team">
+                        <img id="h2h-flag2" src="" alt="" class="h2h-flag" onerror="this.style.display='none'" />
+                        <span id="h2h-t2-name"></span>
+                    </div>
+                </div>
+            </div>
+            <div id="match-list" class="match-list"></div>
+        </section>
+
+    </div><!-- /container -->
+
+    <!-- Pass flags JSON for JS use -->
+    <script>
+        const TEAM_FLAGS = {{ flags | tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+
+</html>
