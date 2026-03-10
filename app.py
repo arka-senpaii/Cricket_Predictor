@@ -119,12 +119,17 @@ def load_resources():
 
 
 def _compute_team_stats(team1, team2):
-    """Compute ELO, form, and H2H statistics from the match dataset."""
+    """Compute ELO, form, H2H statistics, and real historical avg scores."""
     defaults = {
         'elo_team1': 1500.0, 'elo_team2': 1500.0, 'elo_diff': 0.0,
         'team1_form_5': 0.5, 'team2_form_5': 0.5,
         'team1_form_10': 0.5, 'team2_form_10': 0.5,
         'h2h_win_pct': 0.5,
+        # Real historical batting averages
+        'team1_avg_runs': None, 'team1_avg_wkts': None,
+        'team1_innings_count': 0,
+        'team2_avg_runs': None, 'team2_avg_wkts': None,
+        'team2_innings_count': 0,
     }
     if match_df is None or match_df.empty:
         return defaults
@@ -165,6 +170,33 @@ def _compute_team_stats(team1, team2):
         defaults['h2h_win_pct'] = t1_wins / len(h2h)
     else:
         defaults['h2h_win_pct'] = 0.5
+
+    # ── Real historical batting averages ─────────────────────────────────
+    # Collect all innings where the team batted (as batting_first OR chasing)
+    def _innings_stats(team):
+        """Return (avg_runs, avg_wkts, count) over all innings the team batted."""
+        as_bf = df[df['batting_first'] == team][['first_innings_score', 'innings1_wkts']].rename(
+            columns={'first_innings_score': 'runs', 'innings1_wkts': 'wkts'})
+        as_ch = df[df['chasing_team'] == team][['second_innings_score', 'innings2_wkts']].rename(
+            columns={'second_innings_score': 'runs', 'innings2_wkts': 'wkts'})
+        combined = pd.concat([as_bf, as_ch], ignore_index=True)
+        combined = combined.dropna(subset=['runs'])
+        combined = combined[combined['runs'] > 0]
+        if combined.empty:
+            return None, None, 0
+        avg_runs = round(combined['runs'].mean())
+        avg_wkts = round(combined['wkts'].mean()) if 'wkts' in combined.columns else None
+        return int(avg_runs), (int(avg_wkts) if avg_wkts is not None else None), len(combined)
+
+    t1_avg_r, t1_avg_w, t1_cnt = _innings_stats(team1)
+    t2_avg_r, t2_avg_w, t2_cnt = _innings_stats(team2)
+
+    defaults['team1_avg_runs'] = t1_avg_r
+    defaults['team1_avg_wkts'] = t1_avg_w
+    defaults['team1_innings_count'] = t1_cnt
+    defaults['team2_avg_runs'] = t2_avg_r
+    defaults['team2_avg_wkts'] = t2_avg_w
+    defaults['team2_innings_count'] = t2_cnt
 
     return defaults
 
@@ -300,10 +332,13 @@ def auto_update_loop():
 
 load_resources()
 
-# Start background auto-update thread
-_update_thread = threading.Thread(target=auto_update_loop, daemon=True)
-_update_thread.start()
-print("🔄 Background auto-update scheduler started (every 6 hours).")
+# Start background auto-update thread (disable on Vercel serverless)
+if not os.environ.get('VERCEL'):
+    _update_thread = threading.Thread(target=auto_update_loop, daemon=True)
+    _update_thread.start()
+    print("🔄 Background auto-update scheduler started (every 6 hours).")
+else:
+    print("Vercel deployment detected! Skipping background auto-update task.")
 
 
 @app.route('/')
@@ -358,23 +393,20 @@ def predict():
         with torch.no_grad():
             preds = model(torch.tensor(feat_scaled)).numpy()[0]
 
+        # Only use the winner probability from the model; scores come from real data
         winner_prob = float(preds[0])
-        runs_1 = max(50, int(round(float(preds[1]))))
-        wkts_1 = min(10, max(0, int(round(float(preds[2])))))
-        runs_2 = max(50, int(round(float(preds[3]))))
-        wkts_2 = min(10, max(0, int(round(float(preds[4])))))
 
         winner = team2 if winner_prob > 0.5 else team1
         win_prob_display = winner_prob if winner_prob > 0.5 else (1 - winner_prob)
         loser_prob = round((1 - win_prob_display) * 100, 1)
 
-        # Ensure consistency: winner's score should be >= loser's score
-        if winner == team2 and runs_2 < runs_1:
-            runs_1, runs_2 = runs_2, runs_1
-            wkts_1, wkts_2 = wkts_2, wkts_1
-        elif winner == team1 and runs_1 < runs_2:
-            runs_1, runs_2 = runs_2, runs_1
-            wkts_1, wkts_2 = wkts_2, wkts_1
+        # ── Real historical average scores ────────────────────────────────
+        t1_runs = stats['team1_avg_runs']
+        t1_wkts = stats['team1_avg_wkts']
+        t1_innings_count = stats['team1_innings_count']
+        t2_runs = stats['team2_avg_runs']
+        t2_wkts = stats['team2_avg_wkts']
+        t2_innings_count = stats['team2_innings_count']
 
         return jsonify({
             'winner': winner,
@@ -383,8 +415,20 @@ def predict():
             'loser_probability': loser_prob,
             'winner_flag': flag_url(winner),
             'loser_flag': flag_url(team1 if winner == team2 else team2),
-            'innings1': {'team': team1, 'runs': runs_1, 'wickets': wkts_1, 'flag': flag_url(team1)},
-            'innings2': {'team': team2, 'runs': runs_2, 'wickets': wkts_2, 'flag': flag_url(team2)},
+            'innings1': {
+                'team': team1,
+                'runs': t1_runs,
+                'wickets': t1_wkts,
+                'innings_count': t1_innings_count,
+                'flag': flag_url(team1)
+            },
+            'innings2': {
+                'team': team2,
+                'runs': t2_runs,
+                'wickets': t2_wkts,
+                'innings_count': t2_innings_count,
+                'flag': flag_url(team2)
+            },
             # Extra data for charts
             'stats': {
                 'elo_team1': round(stats['elo_team1'], 1),
