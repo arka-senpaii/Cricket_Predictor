@@ -6,11 +6,6 @@
       "use": "@vercel/python"
     }
   ],
-  "build": {
-    "env": {
-      "PIP_EXTRA_INDEX_URL": "https://download.pytorch.org/whl/cpu"
-    }
-  },
   "routes": [
     {
       "src": "/(.*)",
